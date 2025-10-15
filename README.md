@@ -1,5 +1,5 @@
 <h1 align="center">
-  <img align="center" src="https://imgur.com/a/KcR00Mu"  width="270"></img>
+  <img align="center" src="https://imgur.com/mGfqU9N"  width="270"></img>
 <br>
 VOXPROHUB
 </h1>
