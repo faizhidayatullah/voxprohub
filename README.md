@@ -5,7 +5,8 @@ Project ini menggabungkan teknologi modern di sisi frontend, backend, dan cloud 
 
 🚀 Tech Stack
 
-- Frontend
+Frontend
+
 - React.js
 - Tailwind CSS
 - React Router
