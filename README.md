@@ -1,5 +1,5 @@
+<img width="137" height="137" alt="VOXPROHUBLOGO" src="https://github.com/user-attachments/assets/2a99aed5-da01-4aae-8c76-9d9a95a88f81" />
 <h1 align="center">
-  <img align="center" src="https://imgur.com/mGfqU9N"  width="270"></img>
 <br>
 VOXPROHUB
 </h1>
