@@ -1,4 +1,8 @@
-🧠 VoxProHub
+<h1 align="center">
+  <img align="center" src="https://imgur.com/a/KcR00Mu"  width="270"></img>
+<br>
+VOXPROHUB
+</h1>
 
 VoxProHub adalah platform berbasis web yang dirancang untuk mempermudah pengelolaan dan pemesanan fasilitas secara efisien.
 Project ini menggabungkan teknologi modern di sisi frontend, backend, dan cloud untuk menciptakan sistem yang cepat, aman, dan mudah digunakan.
