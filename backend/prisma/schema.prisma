@@ -60,3 +60,14 @@ model ContactInfo {
   updatedAt DateTime @updatedAt
   createdAt DateTime @default(now())
 }
+
+model LandingContent {
+  id          String   @id @default("landing") // singleton
+  heroTitle   String
+  heroSubtitle String
+  heroImage   String?  // URL gambar (hasil upload)
+  visiTitle   String?  // opsional
+  visiText    String?  // opsional
+  updatedAt   DateTime @updatedAt
+  createdAt   DateTime @default(now())
+}
