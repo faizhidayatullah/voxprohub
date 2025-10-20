@@ -93,3 +93,41 @@ export async function adminUpdateContact(token, payload) {
   if (!r.ok) throw new Error(d.error || "Gagal update kontak");
   return d;
 }
+
+// LANDING content
+export async function getLanding() {
+  const r = await fetch(`${API_BASE}/landing`);
+  const d = await r.json();
+  if (!r.ok) throw new Error(d.error || "Gagal mengambil landing content");
+  return d;
+}
+export async function adminGetLanding(token) {
+  const r = await fetch(`${API_BASE}/admin/landing`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const d = await r.json();
+  // (endpoint GET admin optional; kalau ga ada, pakai public getLanding())
+  return d;
+}
+export async function adminUpdateLanding(token, payload) {
+  const r = await fetch(`${API_BASE}/admin/landing`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify(payload),
+  });
+  const d = await r.json();
+  if (!r.ok) throw new Error(d.error || "Gagal update landing");
+  return d;
+}
+export async function adminUploadImage(token, file) {
+  const fd = new FormData();
+  fd.append("file", file);
+  const r = await fetch(`${API_BASE}/admin/upload`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: fd,
+  });
+  const d = await r.json();
+  if (!r.ok) throw new Error(d.error || "Gagal upload gambar");
+  return d; // { url }
+}

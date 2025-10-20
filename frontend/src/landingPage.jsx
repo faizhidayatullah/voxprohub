@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 
-// Assets
+// Assets (fallback jika belum ada data dari DB)
 import image13 from "./assets/image13.png";
 import image14 from "./assets/image14.png";
 import image133 from "./assets/image13-3.png";
@@ -17,27 +17,41 @@ export default function LandingPage() {
   const [scroll, setScroll] = useState(false);
   const logoRef = useRef(null);
 
-  // menu yang scroll ke section
+  // 🌐 State untuk konten landing dari DB
+  const [landing, setLanding] = useState(null);
+
+  // Base URL API (bisa ganti ke env jika mau)
+  const API_BASE = import.meta?.env?.VITE_API_BASE || "http://localhost:4000";
+
+  // Fetch data landing dari backend
+  useEffect(() => {
+    fetch(`${API_BASE}/api/v1/landing`)
+      .then((res) => res.json())
+      .then((data) => setLanding(data))
+      .catch((err) => console.error("Gagal memuat konten landing:", err));
+  }, [API_BASE]);
+
+  // Navbar scroll handler
+  useEffect(() => {
+    const handleScroll = () => setScroll(window.scrollY > 20);
+    window.addEventListener("scroll", handleScroll);
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
+
+  // Menu navigasi
   const NAV = [
     { label: "Beranda", id: "beranda" },
     { label: "Fasilitas", id: "fasilitas" },
     { label: "Kontak", id: "kontak" },
   ];
 
-  const NAVBAR_OFFSET = 80; // kira-kira tinggi navbar saat sticky
-
+  const NAVBAR_OFFSET = 80;
   const scrollToId = (id) => {
     const el = document.getElementById(id);
     if (!el) return;
     const top = el.getBoundingClientRect().top + window.scrollY - NAVBAR_OFFSET;
     window.scrollTo({ top, behavior: "smooth" });
   };
-
-  useEffect(() => {
-    const handleScroll = () => setScroll(window.scrollY > 20);
-    window.addEventListener("scroll", handleScroll);
-    return () => window.removeEventListener("scroll", handleScroll);
-  }, []);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-orange-50 via-yellow-50 to-white text-gray-800 overflow-x-hidden font-[Poppins]">
@@ -104,22 +118,18 @@ export default function LandingPage() {
       </nav>
 
       {/* === HERO / BERANDA === */}
-      <section
-        id="beranda"
-        className="relative overflow-visible bg-white bg-no-repeat bg-[position:center_120%] bg-[length:140%_auto] md:bg-[position:center_115%] md:bg-[length:120%_auto] lg:bg-[position:center_110%] lg:bg-[length:100%_auto] scroll-mt-28"
-        style={{ backgroundImage: `url(${SHAPEGradasi})` }}
-      >
+      <section id="beranda" className="relative overflow-visible bg-white scroll-mt-28" style={{ backgroundImage: `url(${SHAPEGradasi})` }}>
         <div className="relative z-10 max-w-7xl mx-auto flex flex-col md:flex-row items-center gap-10 px-6 md:px-10 pt-28 md:pt-36 pb-16 min-h-[100vh]">
           <div className="flex-1 space-y-6">
-            <h2 className="text-4xl md:text-5xl font-bold leading-tight text-black [font-family:'Poppins-Bold',Helvetica] animate-fadeUp">Menciptakan ruang kolaborasi modern untuk ide, bisnis, dan karya kreatif Anda.</h2>
-            <p className="text-lg md:text-xl text-gray-800 [font-family:'Poppins-Regular',Helvetica] animate-fadeUp">
-              Dari meeting bisnis hingga produksi konten kreatif, Voxpro Hub hadir dengan ruang modern, fasilitas lengkap, dan suasana nyaman untuk mendukung produktivitas Anda.
+            <h2 className="text-4xl md:text-5xl font-bold leading-tight text-black animate-fadeUp">{landing?.heroTitle || "Menciptakan ruang kolaborasi modern untuk ide, bisnis, dan karya kreatif Anda."}</h2>
+            <p className="text-lg md:text-xl text-gray-800 animate-fadeUp">
+              {landing?.heroSubtitle || "Dari meeting bisnis hingga produksi konten kreatif, Voxpro Hub hadir dengan ruang modern, fasilitas lengkap, dan suasana nyaman untuk mendukung produktivitas Anda."}
             </p>
             <div className="relative inline-block">
               <span className="absolute inset-0 blur-[12px] rounded-full bg-black/10 translate-y-2" />
               <Link
                 to="/booking"
-                className="relative inline-flex items-center justify-center px-6 py-3 rounded-md bg-gradient-to-r from-orange-600 to-orange-500 text-white font-semibold shadow-md hover:shadow-lg transition-transform hover:-translate-y-[2px] animate-fadeUp"
+                className="relative inline-flex items-center justify-center px-6 py-3 rounded-md bg-gradient-to-r from-orange-600 to-orange-500 text-white font-semibold shadow-md hover:shadow-lg transition-transform hover:-translate-y-[2px]"
               >
                 Booking Sekarang
               </Link>
@@ -128,10 +138,10 @@ export default function LandingPage() {
 
           <div className="relative md:static">
             <div className="flex-1 hidden md:block sticky top-24">
-              <img ref={logoRef} src={image133} alt="Logo Voxprohub" className="w-full max-w-sm md:max-w-md lg:max-w-xl object-contain drop-shadow-2xl will-change-transform transition-[filter] duration-200" />
+              <img ref={logoRef} src={landing?.heroImage || image133} alt="Hero" className="w-full max-w-sm md:max-w-md lg:max-w-xl object-contain drop-shadow-2xl" />
             </div>
             <div className="md:hidden flex justify-center">
-              <img src={image133} alt="Logo Voxprohub" className="w-full max-w-sm object-contain drop-shadow-2xl" />
+              <img src={landing?.heroImage || image133} alt="Hero" className="w-full max-w-sm object-contain drop-shadow-2xl" />
             </div>
           </div>
         </div>
@@ -139,9 +149,9 @@ export default function LandingPage() {
 
       {/* === VISI === */}
       <section id="visi" className="bg-white py-16 text-center px-6 md:px-16 scroll-mt-28">
-        <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-gray-800 mb-6 font-playfair">Visi Kami</h2>
-        <p className="text-gray-600 text-sm sm:text-base max-w-3xl mx-auto leading-relaxed">Menjadi ruang kolaborasi paling efektif bagi kebutuhan meeting, produksi konten, dan acara profesional di Makassar.</p>
-        <img src={line39} alt="Line" className="mx-auto w-3/4 sm:w-2/3 lg:w-1/2 h-1.5 object-cover mt-6 opacity-70" />
+        <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-gray-800 mb-6">{landing?.visiTitle || "Visi Kami"}</h2>
+        <p className="text-gray-600 text-sm sm:text-base max-w-3xl mx-auto leading-relaxed">{landing?.visiText || "Menjadi ruang kolaborasi paling efektif bagi kebutuhan meeting, produksi konten, dan acara profesional di Makassar."}</p>
+        <hr className="w-128 mx-auto border-t border-gray-400/60 mt-6" />
       </section>
 
       {/* === MAPS === */}
@@ -160,18 +170,15 @@ export default function LandingPage() {
 
       {/* === FASILITAS === */}
       <section id="fasilitas" className="bg-white py-16 text-center px-6 md:px-12 lg:px-20 scroll-mt-28">
-        <h2 className="text-3xl md:text-4xl font-bold text-gray-800 mb-12 font-playfair tracking-wide">Fasilitas Kami</h2>
+        <h2 className="text-3xl md:text-4xl font-bold text-gray-800 mb-12 tracking-wide">Fasilitas Kami</h2>
 
         <div className="grid gap-10 sm:grid-cols-2 md:grid-cols-3">
           {[fasilitas1, fasilitas2, fasilitas3].map((img, i) => (
             <div key={i} className="bg-gradient-to-br from-orange-50 via-yellow-50 to-white rounded-3xl shadow-md hover:shadow-xl hover:-translate-y-2 transition-all duration-500 p-6 flex flex-col items-center">
-              {/* Gambar Fasilitas */}
               <div className="relative overflow-hidden rounded-2xl mb-5 w-full">
                 <img src={img} alt={`Fasilitas ${i + 1}`} className="w-full h-[200px] object-cover transform hover:scale-105 transition-transform duration-500" />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent rounded-2xl"></div>
               </div>
-
-              {/* Judul dan Deskripsi */}
               <h3 className="text-xl font-semibold text-gray-900 mb-3">{["Studio", "Medium Room", "Small Room"][i]}</h3>
               <p className="text-gray-600 text-sm mb-6 leading-relaxed px-2">
                 {
@@ -182,8 +189,6 @@ export default function LandingPage() {
                   ][i]
                 }
               </p>
-
-              {/* Tombol Aksi */}
               <div className="mt-auto">
                 <Link to="/detail-layanan" className="inline-block bg-gradient-to-r from-orange-500 to-yellow-400 text-white px-6 py-2 rounded-full text-sm font-medium hover:scale-105 hover:shadow-lg transition-all duration-300">
                   Lihat Detail

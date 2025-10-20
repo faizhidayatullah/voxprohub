@@ -3,7 +3,7 @@ import { AuthProvider } from "./context/AuthContext";
 import { RequireRole } from "./routes/guards";
 
 import LandingPage from "./landingPage";
-import Beranda from "./pages/Beranda";
+import Beranda from "./landingPage";
 import Fasilitas from "./pages/Fasilitas";
 import Booking from "./pages/Booking";
 import Kontak from "./pages/Kontak";

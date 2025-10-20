@@ -1,15 +1,27 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import image14 from "../assets/image14.png";
-import { API_BASE } from "../api"; // pastikan sudah ada export API_BASE
+import { API_BASE } from "../api";
 
-// Jam operasional (boleh ubah kalau perlu)
-const OPEN_HOUR = 8; // 08:00
-const CLOSE_HOUR = 22; // 22:00
+const OPEN_HOUR = 8;
+const CLOSE_HOUR = 22;
 
-// util
 const pad2 = (n) => String(n).padStart(2, "0");
-const toIDR = (n) => new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(n);
+const toIDR = (n) =>
+  new Intl.NumberFormat("id-ID", {
+    style: "currency",
+    currency: "IDR",
+    maximumFractionDigits: 0,
+  }).format(n);
+
+// konversi "HH:MM" -> menit
+const toMin = (hhmm) => {
+  const [h, m] = hhmm.split(":").map(Number);
+  return h * 60 + m;
+};
+
+// cek overlap rentang waktu [s1, e1) dan [s2, e2)
+const isOverlap = (s1, e1, s2, e2) => s1 < e2 && e1 > s2;
 
 export default function Booking() {
   const navigate = useNavigate();
@@ -33,15 +45,22 @@ export default function Booking() {
   const [month, setMonth] = useState(today.getMonth()); // 0..11
   const [year, setYear] = useState(today.getFullYear());
   const [selectedDate, setSelectedDate] = useState(null); // number (1..31)
-  const [dayStatusMap, setDayStatusMap] = useState({}); // {dayNumber: 'available'|'blocked'}
 
-  // waktu & durasi
+  // indikator hari (bukan disabled penuh)
+  const [dayStatusMap, setDayStatusMap] = useState({}); // {dayNumber: 'hasSlot'|'available'}
+
+  // waktu & durasi untuk satu entri yang akan ditambahkan
   const [selectedTime, setSelectedTime] = useState(""); // "HH:mm"
   const [duration, setDuration] = useState(2); // jam integer
+  const [fullDay, setFullDay] = useState(false); // toggle seharian
+
   const [name, setName] = useState(""); // optional untuk WA
 
   // slots untuk hari terpilih
-  const [dayBlockedSlots, setDayBlockedSlots] = useState([]); // [{start,end,reason}]
+  const [dayBlockedSlots, setDayBlockedSlots] = useState([]); // [{id,date,start,end,reason}]
+
+  // daftar pilihan multi-day {dateISO, start, end}
+  const [selections, setSelections] = useState([]);
 
   // consts UI
   const months = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
@@ -72,7 +91,7 @@ export default function Booking() {
     return `${monthStr}-${pad2(selectedDate)}`;
   }, [selectedDate, monthStr]);
 
-  // jam buka → list timeslot per 30m atau per 1 jam; kita pakai per 1 jam sesuai desainmu
+  // jam buka → list timeslot per 1 jam
   const timeSlots = useMemo(() => {
     const slots = [];
     for (let h = OPEN_HOUR; h <= CLOSE_HOUR - 1; h++) {
@@ -89,12 +108,12 @@ export default function Booking() {
       const end = `${year}-${pad2(month + 1)}-${pad2(daysInMonth)}`;
       const arr = await fetch(`${API_BASE}/rooms/${selectedRoomId}/unavailable-range?start=${start}&end=${end}`).then((r) => r.json());
 
-      // bentuk peta {day: 'blocked'|'available'}
+      // hanya indikator "hasSlot"
       const map = {};
       arr.forEach((s) => {
         const d = new Date(s.date);
         const day = d.getDate();
-        map[day] = "blocked"; // simple: ada blok = tandai blocked
+        map[day] = "hasSlot";
       });
       setDayStatusMap(map);
     }
@@ -117,30 +136,68 @@ export default function Booking() {
 
   const selectedRoom = useMemo(() => rooms.find((r) => r.id === selectedRoomId), [rooms, selectedRoomId]);
 
-  // hitung waktu selesai
+  // hitung endTime sesuai fullDay / duration
   const endTime = useMemo(() => {
+    if (!selectedDate) return "";
+    if (fullDay) return `${pad2(CLOSE_HOUR)}:00`;
     if (!selectedTime) return "";
     const [H, M] = selectedTime.split(":").map(Number);
     const eH = H + Number(duration);
     return `${pad2(eH)}:${pad2(M)}`;
-  }, [selectedTime, duration]);
+  }, [selectedDate, selectedTime, duration, fullDay]);
 
-  // cek overlap dg slot terblokir hari itu
-  const hasOverlap = useMemo(() => {
-    if (!selectedTime || !endTime) return false;
-    return dayBlockedSlots.some((s) => s.start < endTime && s.end > selectedTime);
-  }, [selectedTime, endTime, dayBlockedSlots]);
+  // cek overlap dg slot terblokir (untuk validasi entri aktif)
+  const currentOverlap = useMemo(() => {
+    if (!isoDate) return false;
+    const start = fullDay ? `${pad2(OPEN_HOUR)}:00` : selectedTime;
+    const end = endTime;
+    if (!start || !end) return false;
+    const s1 = toMin(start);
+    const e1 = toMin(end);
+    return dayBlockedSlots.some((s) => isOverlap(s1, e1, toMin(s.start), toMin(s.end)));
+  }, [isoDate, selectedTime, endTime, fullDay, dayBlockedSlots]);
 
-  // UI helpers status warna
-  const getStatusColor = (status) => {
-    switch (status) {
-      case "available":
-        return "bg-green-400/90 hover:bg-green-500 text-white shadow-sm";
-      case "blocked":
-        return "bg-red-400 text-white opacity-70 cursor-not-allowed";
-      default:
-        return "bg-gray-100 text-gray-700";
-    }
+  // cek overlap dengan selections yang sudah ada (tanggal & jam sama)
+  const overlapWithSelections = useMemo(() => {
+    if (!isoDate || !selectedRoomId) return false;
+    const start = fullDay ? `${pad2(OPEN_HOUR)}:00` : selectedTime;
+    const end = endTime;
+    if (!start || !end) return false;
+    const s1 = toMin(start);
+    const e1 = toMin(end);
+
+    return selections.some((sel) => {
+      if (sel.dateISO !== isoDate) return false;
+      if (sel.roomId !== selectedRoomId) return false; // ⬅️ hanya ruangan yang sama
+      return isOverlap(s1, e1, toMin(sel.start), toMin(sel.end));
+    });
+  }, [isoDate, selectedTime, endTime, fullDay, selections, selectedRoomId]);
+
+  // cek apakah start jam tertentu (1 jam) bentrok, untuk DISABLE tombol jam
+  const isHourStartBlocked = (startHH) => {
+    if (fullDay) return true;
+    if (!selectedDate) return true;
+
+    const s1 = toMin(startHH);
+    const e1 = s1 + 60;
+
+    // bentrok dengan slot terblokir dari backend (sudah per-room)
+    const byBlocked = dayBlockedSlots.some((s) => isOverlap(s1, e1, toMin(s.start), toMin(s.end)));
+    if (byBlocked) return true;
+
+    // bentrok dengan pilihan yang SUDAH ditambahkan untuk ruangan & tanggal yang sama
+    const byPicked = selections.some((sel) => sel.roomId === selectedRoomId && sel.dateISO === isoDate && isOverlap(s1, e1, toMin(sel.start), toMin(sel.end)));
+    return byPicked;
+  };
+
+  // UI helpers status warna hari
+  const getDayCellClass = (day) => {
+    const isPast = new Date(year, month, day) < new Date(today.getFullYear(), today.getMonth(), today.getDate());
+
+    const hasSlot = dayStatusMap[day] === "hasSlot";
+    if (isPast) return "bg-gray-100 text-gray-400 cursor-not-allowed";
+    if (hasSlot) return "bg-orange-50 text-orange-700 border border-orange-200 hover:bg-orange-100";
+    return "bg-green-50 text-green-800 border border-green-200 hover:bg-green-100";
   };
 
   function handlePrevMonth() {
@@ -162,25 +219,82 @@ export default function Booking() {
 
   function prettyDate(iso) {
     const d = new Date(iso);
-    return d.toLocaleDateString("id-ID", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+    return d.toLocaleDateString("id-ID", {
+      weekday: "long",
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    });
   }
+
+  // Tambah ke daftar pilihan (multi-day)
+  function addSelection() {
+    if (!selectedRoom) return alert("Pilih ruangan dulu.");
+    if (!isoDate) return alert("Pilih tanggal dulu.");
+
+    const start = fullDay ? `${pad2(OPEN_HOUR)}:00` : selectedTime;
+    const end = endTime;
+
+    if (!start || !end) {
+      return alert(fullDay ? "Gagal menentukan jam seharian." : "Pilih waktu mulai & durasi.");
+    }
+
+    if (currentOverlap) {
+      return alert("Jam yang dipilih bertabrakan dengan slot terblokir.");
+    }
+    if (overlapWithSelections) {
+      return alert("Jam ini bentrok dengan pilihan yang sudah ada pada tanggal yang sama di ruangan ini.");
+    }
+
+    const newSel = {
+      roomId: selectedRoom.id,
+      roomName: selectedRoom.name,
+      pricePerHour: Number(selectedRoom.pricePerHour),
+      dateISO: isoDate,
+      start,
+      end,
+      fullDay,
+    };
+
+    setSelections((prev) => [...prev, newSel]);
+
+    // reset untuk input berikutnya
+    setSelectedDate(null);
+    setSelectedTime("");
+    setFullDay(false);
+  }
+
+  function removeSelection(idx) {
+    setSelections((prev) => prev.filter((_, i) => i !== idx));
+  }
+
+  // total biaya
+  const totalPrice = useMemo(() => {
+    return selections.reduce((sum, sel) => {
+      const hours = sel.fullDay ? CLOSE_HOUR - OPEN_HOUR : (toMin(sel.end) - toMin(sel.start)) / 60;
+      return sum + sel.pricePerHour * hours;
+    }, 0);
+  }, [selections]);
 
   async function onWhatsApp() {
     if (!contact?.whatsapp) return alert("Kontak WhatsApp belum diatur admin.");
     if (!selectedRoom) return alert("Pilih ruangan dulu.");
-    if (!isoDate) return alert("Pilih tanggal dulu.");
-    if (!selectedTime) return alert("Pilih waktu mulai.");
-    if (hasOverlap) return alert("Waktu yang dipilih bertabrakan. Silakan pilih jam lain.");
+    if (selections.length === 0) return alert("Tambahkan minimal satu tanggal.");
 
-    const total = Number(selectedRoom.pricePerHour) * Number(duration);
+    // compose list
+    const lines = selections.map((s, i) => `${i + 1}. ${s.roomName} • ${prettyDate(s.dateISO)} (${s.dateISO}) • ${s.fullDay ? `${pad2(OPEN_HOUR)}:00-${pad2(CLOSE_HOUR)}:00 (seharian)` : `${s.start}-${s.end}`}`).join("\n");
+
     const msg = [
       contact.waMessage || "Halo Voxpro Hub, saya ingin booking.",
       "",
       `Nama: ${name || "-"}`,
-      `Ruangan: ${selectedRoom.name}`,
-      `Tanggal: ${prettyDate(isoDate)} (${isoDate})`,
-      `Waktu: ${selectedTime} - ${endTime} (durasi ${duration} jam)`,
-      `Estimasi Biaya: ${toIDR(total)}`,
+      "",
+      "Detail Pemesanan:",
+      lines,
+      "",
+      `Estimasi Total: ${toIDR(totalPrice)}`,
+      "",
+      "Catatan: ",
       "",
       "Mohon konfirmasinya ya. Terima kasih! 🙏",
     ].join("\n");
@@ -191,7 +305,7 @@ export default function Booking() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         source: "booking_page_whatsapp",
-        note: `room=${selectedRoom.name};date=${isoDate};start=${selectedTime};duration=${duration}`,
+        note: `room=${selectedRoom.name};dates=${selections.map((s) => `${s.dateISO} ${s.start}-${s.end}`).join(",")}`,
       }),
     }).catch(() => {});
 
@@ -210,7 +324,7 @@ export default function Booking() {
 
           {/* Desktop Menu */}
           <div className="hidden md:flex gap-8 items-center font-medium text-gray-700">
-            {["Beranda", "Fasilitas", "Booking", "Kontak"].map((item) => (
+            {["Beranda"].map((item) => (
               <Link
                 key={item}
                 to={`/${item.toLowerCase()}`}
@@ -256,8 +370,8 @@ export default function Booking() {
       </nav>
 
       {/* KONTEN */}
-      <div className="mt-28 bg-white/90 backdrop-blur-xl rounded-3xl shadow-lg w-full max-w-5xl p-8 grid md:grid-cols-2 gap-10 border border-orange-100">
-        {/* Jadwal Booking */}
+      <div className="mt-28 bg-white/90 backdrop-blur-xl rounded-3xl shadow-lg w-full max-w-6xl p-8 grid lg:grid-cols-[1.1fr_0.9fr] gap-10 border border-orange-100">
+        {/* Kolom kiri: Jadwal & Input */}
         <div>
           <h2 className="text-lg font-semibold text-gray-800 mb-4 border-b border-orange-200 pb-2">Jadwal Booking</h2>
 
@@ -270,6 +384,7 @@ export default function Booking() {
                 setSelectedRoomId(e.target.value);
                 setSelectedDate(null);
                 setSelectedTime("");
+                setFullDay(false);
               }}
               className="w-full border rounded-lg px-3 py-2 text-sm mt-1"
             >
@@ -303,15 +418,11 @@ export default function Booking() {
 
             <div className="grid grid-cols-7 gap-2">
               {Array.from({ length: daysInMonth }, (_, i) => i + 1).map((day) => {
-                const status = dayStatusMap[day] || "available";
-                const disabled = status === "blocked" || new Date(year, month, day) < new Date(today.getFullYear(), today.getMonth(), today.getDate()); // disable hari lalu
+                const isPast = new Date(year, month, day) < new Date(today.getFullYear(), today.getMonth(), today.getDate());
+                const className = ["py-1.5 rounded-lg text-xs font-medium transition-all duration-200 border", getDayCellClass(day), selectedDate === day ? "ring-2 ring-orange-300 scale-105" : "", isPast ? "opacity-60" : ""].join(" ");
+
                 return (
-                  <button
-                    key={day}
-                    onClick={() => !disabled && setSelectedDate(day)}
-                    disabled={disabled}
-                    className={`py-1.5 rounded-lg text-xs font-medium transition-all duration-200 ${getStatusColor(status)} ${selectedDate === day ? "ring-2 ring-orange-300 scale-105" : ""} ${disabled ? "opacity-60" : ""}`}
-                  >
+                  <button key={day} onClick={() => !isPast && setSelectedDate(day)} disabled={isPast} className={className} title={dayStatusMap[day] === "hasSlot" ? "Ada beberapa jam terblokir hari ini" : "Semua jam tersedia"}>
                     {day}
                   </button>
                 );
@@ -324,67 +435,67 @@ export default function Booking() {
                 <span className="w-3 h-3 bg-green-500 rounded-sm"></span> Available
               </div>
               <div className="flex items-center gap-1.5">
-                <span className="w-3 h-3 bg-red-500 rounded-sm"></span> Blocked
+                <span className="w-3 h-3 bg-orange-400 rounded-sm"></span> Ada slot terblokir
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="w-3 h-3 bg-gray-400 rounded-sm"></span> Tanggal lewat
               </div>
             </div>
           </div>
 
           {/* Pilih Waktu */}
-          <div className="text-center mb-6">
-            <p className="text-gray-800 font-medium text-xs mb-2">Pilih Waktu Mulai:</p>
-            <div className="grid grid-cols-2 gap-2">
-              {timeSlots.map((t) => (
-                <button
-                  key={t}
-                  onClick={() => setSelectedTime(t)}
-                  disabled={!selectedDate}
-                  className={`py-1.5 rounded-lg text-xs font-medium transition-all ${selectedTime === t ? "bg-orange-500 text-white scale-105 shadow-md" : "bg-gray-100 hover:bg-orange-100 text-gray-700"} ${
-                    !selectedDate ? "opacity-60 cursor-not-allowed" : ""
-                  }`}
-                >
-                  {t}
-                </button>
-              ))}
+          <div className="mb-4">
+            <div className="flex items-center justify-between">
+              <p className="text-gray-800 font-medium text-xs mb-2">Pilih Waktu:</p>
+              <label className={`text-xs flex items-center gap-2 ${fullDay ? "text-orange-600 font-semibold" : "text-gray-700"}`}>
+                <input
+                  type="checkbox"
+                  checked={fullDay}
+                  onChange={(e) => {
+                    setFullDay(e.target.checked);
+                    if (e.target.checked) setSelectedTime("");
+                  }}
+                />
+                Seharian ({pad2(OPEN_HOUR)}:00–{pad2(CLOSE_HOUR)}:00)
+              </label>
             </div>
 
-            {/* Durasi */}
-            <div className="mt-4">
-              <p className="text-gray-800 font-medium text-xs mb-1">Durasi (jam):</p>
-              <select value={duration} onChange={(e) => setDuration(Number(e.target.value))} disabled={!selectedTime} className="border rounded-lg px-3 py-2 text-sm">
-                {[1, 2, 3, 4, 5, 6, 7, 8].map((h) => (
-                  <option key={h} value={h}>
-                    {h}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
+            {!fullDay && (
+              <>
+                <div className="grid grid-cols-2 gap-2">
+                  {timeSlots.map((t) => {
+                    const disabled = isHourStartBlocked(t);
+                    const isSelected = selectedTime === t;
+                    return (
+                      <button
+                        key={t}
+                        onClick={() => setSelectedTime(t)}
+                        disabled={disabled}
+                        className={[
+                          "py-1.5 rounded-lg text-xs font-medium transition-all",
+                          disabled ? "bg-gray-100 text-gray-400 cursor-not-allowed" : isSelected ? "bg-orange-500 text-white scale-105 shadow-md" : "bg-gray-100 hover:bg-orange-100 text-gray-700",
+                        ].join(" ")}
+                        title={disabled && selectedDate ? "Jam ini sudah terblokir / sudah dipilih" : "Tersedia"}
+                      >
+                        {t}
+                      </button>
+                    );
+                  })}
+                </div>
 
-          {/* Form singkat */}
-          <div className="flex flex-col gap-2 text-xs">
-            <input
-              type="text"
-              placeholder="Nama Lengkap (opsional)"
-              className="border border-gray-300 rounded-lg px-3 py-1.5 w-full text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-orange-300 outline-none"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-            />
-          </div>
-        </div>
-
-        {/* Ringkasan & WA */}
-        <div>
-          <h2 className="text-lg font-semibold text-gray-800 mb-4 border-b border-orange-200 pb-2">Ringkasan</h2>
-
-          <div className="text-gray-700 mb-4 bg-orange-50 rounded-xl p-3 shadow-sm text-xs">
-            <p className="font-medium mb-1">{selectedDate ? `Tanggal: ${selectedDate} ${months[month]} ${year}` : "Tanggal belum dipilih"}</p>
-            <p>{selectedTime ? `Waktu: ${selectedTime} - ${endTime} (durasi ${duration} jam)` : "Waktu belum dipilih"}</p>
-            <p className="mt-1">
-              Ruangan: <b>{selectedRoom ? selectedRoom.name : "-"}</b>
-            </p>
-            <p className="mt-1">
-              Estimasi Biaya: <b>{selectedRoom && selectedTime ? toIDR(selectedRoom.pricePerHour * duration) : "-"}</b>
-            </p>
+                {/* Durasi */}
+                <div className="mt-4">
+                  <p className="text-gray-800 font-medium text-xs mb-1">Durasi (jam):</p>
+                  <select value={duration} onChange={(e) => setDuration(Number(e.target.value))} disabled={!selectedTime} className="border rounded-lg px-3 py-2 text-sm">
+                    {[1, 2, 3, 4, 5, 6, 7, 8].map((h) => (
+                      <option key={h} value={h}>
+                        {h}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </>
+            )}
           </div>
 
           {/* Slot terblokir hari ini */}
@@ -397,20 +508,91 @@ export default function Booking() {
             ) : (
               <ul className="space-y-1">
                 {dayBlockedSlots.map((s) => (
-                  <li key={s.id} className="text-xs bg-orange-100 border border-orange-200 rounded px-2 py-1">
+                  <li key={s.id} className="text-xs text-black bg-orange-100 border border-orange-200 rounded px-2 py-1">
                     {s.start}–{s.end} {s.reason ? `• ${s.reason}` : ""}
                   </li>
                 ))}
               </ul>
             )}
-            {hasOverlap && <div className="mt-2 text-xs text-red-600">Waktu yang dipilih bertabrakan—silakan pilih jam lain.</div>}
+            {selectedDate && (currentOverlap || overlapWithSelections) && <div className="mt-2 text-xs text-red-600">Waktu yang dipilih bertabrakan—silakan pilih jam lain.</div>}
+          </div>
+
+          {/* Tombol tambah ke daftar */}
+          <div className="flex flex-col sm:flex-row gap-3 items-stretch">
+            {/* Input Nama di kiri */}
+            <div className="relative flex-1">
+              <input
+                type="text"
+                placeholder="Nama Lengkap (opsional)"
+                className="h-11 w-full border border-gray-300 rounded-xl pl-3 pr-16 text-sm text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-orange-300 outline-none"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+              />
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-gray-400">opsional</span>
+            </div>
+
+            {/* Tombol Tambah ke Daftar di kanan */}
+            <button
+              onClick={addSelection}
+              className="h-11 px-5 rounded-xl bg-gradient-to-r from-orange-500 to-orange-600 text-white text-sm font-semibold shadow hover:shadow-lg transition disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              disabled={!selectedRoom || !selectedDate || (fullDay ? false : !selectedTime) || currentOverlap || overlapWithSelections}
+              title="Tambah tanggal & jam ini ke daftar"
+            >
+              {/* ikon plus */}
+              <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M12 5v14M5 12h14" strokeLinecap="round" />
+              </svg>
+              Tambah ke Daftar
+            </button>
+          </div>
+        </div>
+
+        {/* Kolom kanan: Ringkasan multi-day & WhatsApp */}
+        <div>
+          <h2 className="text-lg font-semibold text-gray-800 mb-4 border-b border-orange-200 pb-2">Ringkasan & Daftar Pilihan</h2>
+
+          {/* Daftar pilihan */}
+          <div className="bg-white rounded-xl border p-3 mb-4">
+            {selections.length === 0 ? (
+              <div className="text-xs text-gray-500">
+                Belum ada pilihan. Tambahkan tanggal & jam, lalu klik <b>“ Tambah ke Daftar ”</b>.
+              </div>
+            ) : (
+              <ul className="space-y-2">
+                {selections.map((s, idx) => (
+                  <li key={`${s.roomId}-${s.dateISO}-${s.start}-${s.end}-${idx}`} className="text-xs bg-orange-50 border border-orange-200 rounded px-2 py-2 flex items-center justify-between">
+                    <div>
+                      <div className="font-medium text-gray-800">{s.roomName}</div>
+                      <div className="text-gray-700">
+                        {prettyDate(s.dateISO)} <span className="text-gray-500">({s.dateISO})</span>
+                      </div>
+                      <div className="text-gray-700">{s.fullDay ? `${pad2(OPEN_HOUR)}:00–${pad2(CLOSE_HOUR)}:00 (Seharian)` : `${s.start}–${s.end}`}</div>
+                    </div>
+
+                    <button onClick={() => removeSelection(idx)} className="text-red-600 hover:underline">
+                      Hapus
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
+          {/* Estimasi biaya total */}
+          <div className="text-gray-700 mb-4 bg-orange-50 rounded-xl p-3 shadow-sm text-xs">
+            <p className="mt-1">
+              Ruangan: <b>{selectedRoom ? selectedRoom.name : "-"}</b>
+            </p>
+            <p className="mt-1">
+              Estimasi Total: <b>{selectedRoom ? toIDR(totalPrice) : "-"}</b>
+            </p>
           </div>
 
           {/* Tombol WA */}
           <button
             onClick={onWhatsApp}
             className="mt-2 w-full py-2 text-sm bg-gradient-to-r from-orange-500 to-yellow-400 text-white font-semibold rounded-lg shadow hover:shadow-md hover:scale-[1.03] transition-all disabled:opacity-60"
-            disabled={!selectedRoom || !selectedDate || !selectedTime || hasOverlap}
+            disabled={!selectedRoom || selections.length === 0}
           >
             Chat via WhatsApp
           </button>
