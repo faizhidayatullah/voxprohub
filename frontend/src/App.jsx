@@ -9,7 +9,7 @@ import Booking from "./pages/Booking";
 import Kontak from "./pages/Kontak";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
-import DetailLayanan from "./pages/detail-layanan";
+import RoomDetail from "./pages/RoomDetail";
 import AdminDashboard from "./pages/admin/AdminDashboard";
 
 export default function App() {
@@ -24,7 +24,7 @@ export default function App() {
           <Route path="/kontak" element={<Kontak />} />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
-          <Route path="/detail-layanan" element={<DetailLayanan />} />
+          <Route path="/rooms/:slug" element={<RoomDetail />} />
           {/* Admin only */}
           <Route element={<RequireRole role="ADMIN" />}>
             <Route path="/admin" element={<AdminDashboard />} />

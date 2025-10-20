@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
-
-// Assets (fallback jika belum ada data dari DB)
+import { ROOMS } from "./data/rooms";
 import image13 from "./assets/image13.png";
 import image14 from "./assets/image14.png";
 import image133 from "./assets/image13-3.png";
@@ -169,28 +168,28 @@ export default function LandingPage() {
       </section>
 
       {/* === FASILITAS === */}
+      {/* === FASILITAS === */}
       <section id="fasilitas" className="bg-white py-16 text-center px-6 md:px-12 lg:px-20 scroll-mt-28">
         <h2 className="text-3xl md:text-4xl font-bold text-gray-800 mb-12 tracking-wide">Fasilitas Kami</h2>
 
         <div className="grid gap-10 sm:grid-cols-2 md:grid-cols-3">
-          {[fasilitas1, fasilitas2, fasilitas3].map((img, i) => (
-            <div key={i} className="bg-gradient-to-br from-orange-50 via-yellow-50 to-white rounded-3xl shadow-md hover:shadow-xl hover:-translate-y-2 transition-all duration-500 p-6 flex flex-col items-center">
+          {ROOMS.map((room) => (
+            <div key={room.slug} className="bg-gradient-to-br from-orange-50 via-yellow-50 to-white rounded-3xl shadow-md hover:shadow-xl hover:-translate-y-2 transition-all duration-500 p-6 flex flex-col items-center">
+              {/* FOTO */}
               <div className="relative overflow-hidden rounded-2xl mb-5 w-full">
-                <img src={img} alt={`Fasilitas ${i + 1}`} className="w-full h-[200px] object-cover transform hover:scale-105 transition-transform duration-500" />
+                <img src={room.image} alt={room.title} className="w-full h-[200px] object-cover transform hover:scale-105 transition-transform duration-500" />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent rounded-2xl"></div>
               </div>
-              <h3 className="text-xl font-semibold text-gray-900 mb-3">{["Studio", "Medium Room", "Small Room"][i]}</h3>
-              <p className="text-gray-600 text-sm mb-6 leading-relaxed px-2">
-                {
-                  [
-                    "Cocok untuk podcast, livestream, atau produksi konten video dengan pencahayaan studio profesional.",
-                    "Kapasitas 5–7 orang, ideal untuk diskusi tim kecil atau presentasi dengan proyektor modern.",
-                    "Ruang nyaman untuk 2–3 orang, cocok untuk meeting privat, sesi kerja fokus, atau konsultasi.",
-                  ][i]
-                }
-              </p>
+
+              {/* NAMA ROOM */}
+              <h3 className="text-xl font-semibold text-gray-900 mb-3">{room.title}</h3>
+
+              {/* DESKRIPSI SINGKAT */}
+              <p className="text-gray-600 text-sm mb-6 leading-relaxed px-2">{room.desc.slice(0, 130)}...</p>
+
+              {/* CTA */}
               <div className="mt-auto">
-                <Link to="/detail-layanan" className="inline-block bg-gradient-to-r from-orange-500 to-yellow-400 text-white px-6 py-2 rounded-full text-sm font-medium hover:scale-105 hover:shadow-lg transition-all duration-300">
+                <Link to={`/rooms/${room.slug}`} className="inline-block bg-gradient-to-r from-orange-500 to-yellow-400 text-white px-6 py-2 rounded-full text-sm font-medium hover:scale-105 hover:shadow-lg transition-all duration-300">
                   Lihat Detail
                 </Link>
               </div>
